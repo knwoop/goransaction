@@ -43,13 +43,11 @@ The RunInTransaction function allows you to execute a function inside an existin
 If no transaction is present in the context, it creates a new transaction.
 
 ``` go
-err := client.RunInTransaction(context.Background(), func(ctx context.Context, txn *Transaction) error {
-    // Perform operations with or without a transaction.
+if err := client.RunInTransaction(ctx, func(ctx context.Context, txn *Transaction) error {
     _, err := tx.ExecContext(ctx, "UPDATE example SET col = ? WHERE id = ?", "new_value", 1)
     return err
-})
-if err != nil {
-    // error handling
+}); err != nil {
+  // error handling
 }
 ```
 
