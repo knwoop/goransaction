@@ -38,7 +38,7 @@ if err := RunTransaction(context.Background(), client, func(ctx context.Context,
 }
 ```
 
-Reusing an Existing Transaction
+### Reusing an Existing Transaction
 The RunInTransaction function allows you to execute a function inside an existing transaction if one is already available in the context.
 If no transaction is present in the context, it creates a new transaction.
 
