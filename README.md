@@ -52,5 +52,5 @@ if err := client.RunInTransaction(ctx, func(ctx context.Context, txn *Transactio
 ```
 
 ### Transaction Options
-WithReadOnly(): Sets the transaction as read-only, ensuring that no writes are allowed.
-WithUsePrimary(): Forces the transaction to use the primary database even for read operations.
+- WithReadOnly(): Sets the transaction as read-only, ensuring that no writes are allowed.
+- WithUsePrimary(): Forces the transaction to use the primary database even for read operations.
