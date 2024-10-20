@@ -2,18 +2,24 @@ package transaction
 
 import (
 	"context"
+	"database/sql"
 )
 
 type transactionKey struct{}
 
-func getTransactionFromContext(ctx context.Context) *Transaction {
+// Transaction is a wrapper around the standard sql.Tx, representing a database transaction.
+type transaction struct {
+	*sql.Tx
+}
+
+func getTransactionFromContext(ctx context.Context) Conn {
 	value := ctx.Value(transactionKey{})
 
 	if value == nil {
 		return nil
 	}
 
-	txn, ok := value.(*Transaction)
+	txn, ok := value.(Conn)
 	if !ok {
 		return nil
 	}
@@ -21,7 +27,7 @@ func getTransactionFromContext(ctx context.Context) *Transaction {
 	return txn
 }
 
-func setTransactionToContext(ctx context.Context, txn *Transaction) context.Context {
+func setTransactionToContext(ctx context.Context, txn Conn) context.Context {
 	if txn := getTransactionFromContext(ctx); txn != nil {
 		return ctx
 	}

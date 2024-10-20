@@ -13,6 +13,13 @@ type Client struct {
 	replicas []*sql.DB
 }
 
+type Conn interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	PrepareContext(ctx context.Context, query string) (*sql.Stmt, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 // NewClient creates a new Client with a primary and an optional set of replicas.
 // If no replicas are provided, the primary connection will be added to the replica list.
 // This ensures there is always at least one replica (even if it's the primary itself).
@@ -36,13 +43,13 @@ func (c *Client) Close() {
 // If the context already contains an active transaction, it will use the existing transaction.
 // Otherwise, it starts a new transaction, setting the transaction to the context, and executes the function within it.
 // If starting or executing the transaction fails, an error is returned.
-func (c *Client) RunInTrunsaction(ctx context.Context, f func(ctx context.Context, txn *Transaction) error, opts ...TransactionOption) error {
+func (c *Client) RunInTrunsaction(ctx context.Context, f func(ctx context.Context, conn Conn) error, opts ...TransactionOption) error {
 	if txn := getTransactionFromContext(ctx); txn != nil {
 		return f(ctx, txn)
 	}
 
-	if err := c.runInTrunsaction(ctx, func(ctx context.Context, txn *Transaction) error {
-		return f(setTransactionToContext(ctx, txn), txn)
+	if err := c.runInTrunsaction(ctx, func(ctx context.Context, conn Conn) error {
+		return f(setTransactionToContext(ctx, conn), conn)
 	}, opts...); err != nil {
 		return fmt.Errorf("failed to execute a transaction: %w", err)
 	}
@@ -50,17 +57,33 @@ func (c *Client) RunInTrunsaction(ctx context.Context, f func(ctx context.Contex
 	return nil
 }
 
-func (c *Client) runInTrunsaction(ctx context.Context, f func(context.Context, *Transaction) error, opts ...TransactionOption) (rerr error) {
-	var txOpts TransactionOptions
-	for _, opt := range opts {
-		opt(&txOpts)
+// RunInSingleTransaction executes the provided function `f` within the context of an existing transaction.
+// If a transaction is already active in the context, it reuses the existing transaction by setting it in the context.
+// If no transaction is present, it uses the provided options to determine which database connection to use
+// (primary or replica) and then executes the function without starting a new transaction.
+func (c *Client) RunInSingleTransaction(ctx context.Context, f func(ctx context.Context, conn Conn) error, opts ...TransactionOption) error {
+	if txn := getTransactionFromContext(ctx); txn != nil {
+		return f(setTransactionToContext(ctx, txn), txn)
 	}
+
+	txOpts := newOption(opts...)
 
 	conn := c.primary
 	if !txOpts.usePrimary && txOpts.readOnly {
 		conn = c.replicas[0] // TODO: use replica in rotation
 	}
-	tx, err := conn.BeginTx(ctx, &sql.TxOptions{
+
+	return f(ctx, conn)
+}
+
+func (c *Client) runInTrunsaction(ctx context.Context, f func(context.Context, Conn) error, opts ...TransactionOption) (rerr error) {
+	txOpts := newOption(opts...)
+
+	db := c.primary
+	if !txOpts.usePrimary && txOpts.readOnly {
+		db = c.replicas[0] // TODO: use replica in rotation
+	}
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{
 		ReadOnly: txOpts.readOnly,
 	})
 	if err != nil {
@@ -79,7 +102,7 @@ func (c *Client) runInTrunsaction(ctx context.Context, f func(context.Context, *
 		}
 	}()
 
-	txn := &Transaction{Tx: tx}
+	txn := &transaction{Tx: tx}
 	if err := f(setTransactionToContext(ctx, txn), txn); err != nil {
 		return fmt.Errorf("failed to run function in a transaction: %w", err)
 	}
