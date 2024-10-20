@@ -1,4 +1,4 @@
-# Transactional Database Client for SQL
+# goransaction
 
 This Go package provides a simple transactional database client that supports both primary and replica databases. It allows for flexible transaction management with configurable options like read-only transactions and the ability to specify whether to use a primary or replica database.
 
